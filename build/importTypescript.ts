@@ -106,75 +106,12 @@ export const libFileSet: Record<string, boolean> = {}
 	while (dtsFiles.length > 0) {
 		const name = dtsFiles.shift();
 		const output = readLibFile(name).replace(/\r\n/g, '\n');
-		strLibResult += `libFileMap['${name}'] = "${escapeText(output)}";\n`;
+		strLibResult += `libFileMap['${name}'] = ${JSON.stringify(output)};\n`;
 		strIndexResult += `libFileSet['${name}'] = true;\n`;
 	}
 
 	fs.writeFileSync(path.join(TYPESCRIPT_LIB_DESTINATION, 'lib.ts'), strLibResult);
 	fs.writeFileSync(path.join(TYPESCRIPT_LIB_DESTINATION, 'lib.index.ts'), strIndexResult);
-}
-
-/**
- * Escape text such that it can be used in a javascript string enclosed by double quotes (")
- */
-function escapeText(text) {
-	// See http://www.javascriptkit.com/jsref/escapesequence.shtml
-	const _backspace = '\b'.charCodeAt(0);
-	const _formFeed = '\f'.charCodeAt(0);
-	const _newLine = '\n'.charCodeAt(0);
-	const _nullChar = 0;
-	const _carriageReturn = '\r'.charCodeAt(0);
-	const _tab = '\t'.charCodeAt(0);
-	const _verticalTab = '\v'.charCodeAt(0);
-	const _backslash = '\\'.charCodeAt(0);
-	const _doubleQuote = '"'.charCodeAt(0);
-
-	const len = text.length;
-	let startPos = 0;
-	let chrCode;
-	let replaceWith = null;
-	let resultPieces = [];
-
-	for (let i = 0; i < len; i++) {
-		chrCode = text.charCodeAt(i);
-		switch (chrCode) {
-			case _backspace:
-				replaceWith = '\\b';
-				break;
-			case _formFeed:
-				replaceWith = '\\f';
-				break;
-			case _newLine:
-				replaceWith = '\\n';
-				break;
-			case _nullChar:
-				replaceWith = '\\0';
-				break;
-			case _carriageReturn:
-				replaceWith = '\\r';
-				break;
-			case _tab:
-				replaceWith = '\\t';
-				break;
-			case _verticalTab:
-				replaceWith = '\\v';
-				break;
-			case _backslash:
-				replaceWith = '\\\\';
-				break;
-			case _doubleQuote:
-				replaceWith = '\\"';
-				break;
-		}
-		if (replaceWith !== null) {
-			resultPieces.push(text.substring(startPos, i));
-			resultPieces.push(replaceWith);
-			startPos = i + 1;
-			replaceWith = null;
-		}
-	}
-	resultPieces.push(text.substring(startPos, len));
-	return resultPieces.join('');
 }
 
 function stripSourceMaps(str) {

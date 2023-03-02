@@ -9,6 +9,7 @@ import {
 	Diagnostic,
 	DiagnosticRelatedInformation,
 	IExtraLibs,
+	InlayHintsOptions,
 	TypeScriptWorker as ITypeScriptWorker
 } from './monaco.contribution';
 import { Uri, worker } from '../../fillers/monaco-editor-core';
@@ -38,7 +39,7 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 	private _extraLibs: IExtraLibs = Object.create(null);
 	private _languageService = ts.createLanguageService(this);
 	private _compilerOptions: ts.CompilerOptions;
-	private _inlayHintsOptions?: ts.UserPreferences;
+	private _inlayHintsOptions?: InlayHintsOptions;
 
 	constructor(ctx: worker.IWorkerContext, createData: ICreateData) {
 		this._ctx = ctx;
@@ -445,7 +446,7 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 		if (fileNameIsLib(fileName)) {
 			return [];
 		}
-		const preferences: ts.UserPreferences = this._inlayHintsOptions ?? {};
+		const preferences: ts.InlayHintsOptions = this._inlayHintsOptions ?? {};
 		const span: ts.TextSpan = {
 			start,
 			length: end - start
@@ -463,7 +464,7 @@ export interface ICreateData {
 	compilerOptions: ts.CompilerOptions;
 	extraLibs: IExtraLibs;
 	customWorkerPath?: string;
-	inlayHintsOptions?: ts.UserPreferences;
+	inlayHintsOptions?: InlayHintsOptions;
 }
 
 /** The shape of the factory */

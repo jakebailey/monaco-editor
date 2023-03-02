@@ -168,7 +168,7 @@ export interface WorkerOptions {
 	customWorkerPath?: string;
 }
 
-interface InlayHintsOptions {
+export interface InlayHintsOptions {
 	readonly includeInlayParameterNameHints?: 'none' | 'literals' | 'all';
 	readonly includeInlayParameterNameHintsWhenArgumentMatchesName?: boolean;
 	readonly includeInlayFunctionParameterTypeHints?: boolean;

@@ -11,7 +11,6 @@ import {
 } from './monaco.contribution';
 import type * as ts from 'typescript';
 import type { TypeScriptWorker } from './tsWorker';
-import { libFileSet } from './lib/lib.index';
 import {
 	editor,
 	languages,
@@ -93,34 +92,30 @@ export abstract class Adapter {
 // --- lib files
 
 export class LibFiles {
-	private _libFiles: Record<string, string>;
-	private _hasFetchedLibFiles: boolean;
-	private _fetchLibFilesPromise: Promise<void> | null;
+	private _fetchLibFilesPromise: Promise<Record<string, string>> | null;
 
 	constructor(private readonly _worker: (...uris: Uri[]) => Promise<TypeScriptWorker>) {
-		this._libFiles = {};
-		this._hasFetchedLibFiles = false;
 		this._fetchLibFilesPromise = null;
 	}
 
-	public isLibFile(uri: Uri | null): boolean {
+	public async isLibFile(uri: Uri | null): Promise<boolean> {
 		if (!uri) {
 			return false;
 		}
 		if (uri.path.indexOf('/lib.') === 0) {
-			return !!libFileSet[uri.path.slice(1)];
+			return !!this._getLibFileContents(uri);
 		}
 		return false;
 	}
 
-	public getOrCreateModel(fileName: string): editor.ITextModel | null {
+	public async getOrCreateModel(fileName: string): Promise<editor.ITextModel | null> {
 		const uri = Uri.parse(fileName);
 		const model = editor.getModel(uri);
 		if (model) {
 			return model;
 		}
-		if (this.isLibFile(uri) && this._hasFetchedLibFiles) {
-			return editor.createModel(this._libFiles[uri.path.slice(1)], 'typescript', uri);
+		if (await this.isLibFile(uri)) {
+			return editor.createModel(await this._getLibFileContents(uri), 'typescript', uri);
 		}
 		const matchedLibFile = typescriptDefaults.getExtraLibs()[fileName];
 		if (matchedLibFile) {
@@ -129,33 +124,16 @@ export class LibFiles {
 		return null;
 	}
 
-	private _containsLibFile(uris: (Uri | null)[]): boolean {
-		for (let uri of uris) {
-			if (this.isLibFile(uri)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	public async fetchLibFilesIfNecessary(uris: (Uri | null)[]): Promise<void> {
-		if (!this._containsLibFile(uris)) {
-			// no lib files necessary
-			return;
-		}
-		await this._fetchLibFiles();
-	}
-
-	private _fetchLibFiles(): Promise<void> {
+	public fetchLibFiles(): Promise<Record<string, string>> {
 		if (!this._fetchLibFilesPromise) {
-			this._fetchLibFilesPromise = this._worker()
-				.then((w) => w.getLibFiles())
-				.then((libFiles) => {
-					this._hasFetchedLibFiles = true;
-					this._libFiles = libFiles;
-				});
+			this._fetchLibFilesPromise = this._worker().then((w) => w.getLibFiles());
 		}
 		return this._fetchLibFilesPromise;
+	}
+
+	private async _getLibFileContents(uri: Uri): Promise<string> {
+		const libFiles = await this.fetchLibFiles();
+		return libFiles[uri.path.slice(1)];
 	}
 }
 
@@ -319,29 +297,25 @@ export class DiagnosticsAdapter extends Adapter {
 					-1
 			);
 
-		// Fetch lib files if necessary
-		const relatedUris = diagnostics
-			.map((d) => d.relatedInformation || [])
-			.reduce((p, c) => c.concat(p), [])
-			.map((relatedInformation) =>
-				relatedInformation.file ? Uri.parse(relatedInformation.file.fileName) : null
-			);
-
-		await this._libFiles.fetchLibFilesIfNecessary(relatedUris);
+		await this._libFiles.fetchLibFiles();
 
 		if (model.isDisposed()) {
 			// model was disposed in the meantime
 			return;
 		}
 
-		editor.setModelMarkers(
-			model,
-			this._selector,
-			diagnostics.map((d) => this._convertDiagnostics(model, d))
-		);
+		const markers: editor.IMarkerData[] = [];
+		for (const d of diagnostics) {
+			markers.push(await this._convertDiagnostics(model, d));
+		}
+
+		editor.setModelMarkers(model, this._selector, markers);
 	}
 
-	private _convertDiagnostics(model: editor.ITextModel, diag: Diagnostic): editor.IMarkerData {
+	private async _convertDiagnostics(
+		model: editor.ITextModel,
+		diag: Diagnostic
+	): Promise<editor.IMarkerData> {
 		const diagStart = diag.start || 0;
 		const diagLength = diag.length || 1;
 		const { lineNumber: startLineNumber, column: startColumn } = model.getPositionAt(diagStart);
@@ -366,27 +340,27 @@ export class DiagnosticsAdapter extends Adapter {
 			message: flattenDiagnosticMessageText(diag.messageText, '\n'),
 			code: diag.code.toString(),
 			tags,
-			relatedInformation: this._convertRelatedInformation(model, diag.relatedInformation)
+			relatedInformation: await this._convertRelatedInformation(model, diag.relatedInformation)
 		};
 	}
 
-	private _convertRelatedInformation(
+	private async _convertRelatedInformation(
 		model: editor.ITextModel,
 		relatedInformation?: DiagnosticRelatedInformation[]
-	): editor.IRelatedInformation[] {
+	): Promise<editor.IRelatedInformation[]> {
 		if (!relatedInformation) {
 			return [];
 		}
 
 		const result: editor.IRelatedInformation[] = [];
-		relatedInformation.forEach((info) => {
+		for (const info of relatedInformation) {
 			let relatedResource: editor.ITextModel | null = model;
 			if (info.file) {
-				relatedResource = this._libFiles.getOrCreateModel(info.file.fileName);
+				relatedResource = await this._libFiles.getOrCreateModel(info.file.fileName);
 			}
 
 			if (!relatedResource) {
-				return;
+				continue;
 			}
 			const infoStart = info.start || 0;
 			const infoLength = info.length || 1;
@@ -404,7 +378,7 @@ export class DiagnosticsAdapter extends Adapter {
 				endColumn,
 				message: flattenDiagnosticMessageText(info.messageText, '\n')
 			});
-		});
+		}
 		return result;
 	}
 
@@ -784,9 +758,7 @@ export class DefinitionAdapter extends Adapter {
 		}
 
 		// Fetch lib files if necessary
-		await this._libFiles.fetchLibFilesIfNecessary(
-			entries.map((entry) => Uri.parse(entry.fileName))
-		);
+		await this._libFiles.fetchLibFiles();
 
 		if (model.isDisposed()) {
 			return;
@@ -794,7 +766,7 @@ export class DefinitionAdapter extends Adapter {
 
 		const result: languages.Location[] = [];
 		for (let entry of entries) {
-			const refModel = this._libFiles.getOrCreateModel(entry.fileName);
+			const refModel = await this._libFiles.getOrCreateModel(entry.fileName);
 			if (refModel) {
 				result.push({
 					uri: refModel.uri,
@@ -837,9 +809,7 @@ export class ReferenceAdapter extends Adapter implements languages.ReferenceProv
 		}
 
 		// Fetch lib files if necessary
-		await this._libFiles.fetchLibFilesIfNecessary(
-			entries.map((entry) => Uri.parse(entry.fileName))
-		);
+		await this._libFiles.fetchLibFiles();
 
 		if (model.isDisposed()) {
 			return;
@@ -847,7 +817,7 @@ export class ReferenceAdapter extends Adapter implements languages.ReferenceProv
 
 		const result: languages.Location[] = [];
 		for (let entry of entries) {
-			const refModel = this._libFiles.getOrCreateModel(entry.fileName);
+			const refModel = await this._libFiles.getOrCreateModel(entry.fileName);
 			if (refModel) {
 				result.push({
 					uri: refModel.uri,
@@ -1200,7 +1170,7 @@ export class RenameAdapter extends Adapter implements languages.RenameProvider {
 
 		const edits: languages.IWorkspaceTextEdit[] = [];
 		for (const renameLocation of renameLocations) {
-			const model = this._libFiles.getOrCreateModel(renameLocation.fileName);
+			const model = await this._libFiles.getOrCreateModel(renameLocation.fileName);
 			if (model) {
 				edits.push({
 					resource: model.uri,

@@ -606,7 +606,7 @@ const modeConfigurationDefault: Required<ModeConfiguration> = {
 };
 
 export const typescriptDefaults: LanguageServiceDefaults = new LanguageServiceDefaultsImpl(
-	{ allowNonTsExtensions: true, target: ScriptTarget.Latest },
+	{ allowNonTsExtensions: true, target: 99 /* Latest */ },
 	{ noSemanticValidation: false, noSyntaxValidation: false, onlyVisible: false },
 	{},
 	{},
@@ -614,7 +614,7 @@ export const typescriptDefaults: LanguageServiceDefaults = new LanguageServiceDe
 );
 
 export const javascriptDefaults: LanguageServiceDefaults = new LanguageServiceDefaultsImpl(
-	{ allowNonTsExtensions: true, allowJs: true, target: ScriptTarget.Latest },
+	{ allowNonTsExtensions: true, allowJs: true, target: 99 /* Latest */ },
 	{ noSemanticValidation: true, noSyntaxValidation: false, onlyVisible: false },
 	{},
 	{},

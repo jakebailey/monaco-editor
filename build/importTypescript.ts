@@ -93,25 +93,15 @@ ${generatedNote}
 /** Contains all the lib files */
 export const libFileMap: Record<string, string> = {}
 `;
-	let strIndexResult = `/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-${generatedNote}
 
-/** Contains all the lib files */
-export const libFileSet: Record<string, boolean> = {}
-`;
 	const dtsFiles = fs.readdirSync(TYPESCRIPT_LIB_SOURCE).filter((f) => f.includes('lib.'));
 	while (dtsFiles.length > 0) {
 		const name = dtsFiles.shift();
 		const output = readLibFile(name).replace(/\r\n/g, '\n');
 		strLibResult += `libFileMap['${name}'] = ${JSON.stringify(output)};\n`;
-		strIndexResult += `libFileSet['${name}'] = true;\n`;
 	}
 
 	fs.writeFileSync(path.join(TYPESCRIPT_LIB_DESTINATION, 'lib.ts'), strLibResult);
-	fs.writeFileSync(path.join(TYPESCRIPT_LIB_DESTINATION, 'lib.index.ts'), strIndexResult);
 }
 
 function stripSourceMaps(str) {

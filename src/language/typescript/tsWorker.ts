@@ -193,10 +193,10 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 
 		// TODO(jakebailey): make public
 		const libMap: Map<string, string> = (this._tsc as any).libMap;
-		for (const [name, filename] of libMap.entries()) {
+		for (const filename of libMap.values()) {
 			const url = `${this._customTypeScriptPath}/lib/${filename}`;
 			const response = await fetch(url);
-			libFiles[name] = await response.text();
+			libFiles[filename] = await response.text();
 		}
 
 		return (this._libFiles = libFiles);

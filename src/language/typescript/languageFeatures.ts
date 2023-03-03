@@ -9,7 +9,7 @@ import {
 	LanguageServiceDefaults,
 	typescriptDefaults
 } from './monaco.contribution';
-import type * as ts from './lib/typescriptServices';
+import type * as ts from 'typescript';
 import type { TypeScriptWorker } from './tsWorker';
 import { libFileSet } from './lib/lib.index';
 import {

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as ts from './lib/typescriptServices';
+import * as ts from 'typescript';
 import { libFileMap } from './lib/lib';
 import {
 	Diagnostic,
@@ -13,6 +13,8 @@ import {
 	TypeScriptWorker as ITypeScriptWorker
 } from './monaco.contribution';
 import { Uri, worker } from '../../fillers/monaco-editor-core';
+
+type TypeScriptAPI = typeof ts;
 
 /**
  * Loading a default lib as a source file will mess up TS completely.
@@ -37,15 +39,19 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 
 	private _ctx: worker.IWorkerContext;
 	private _extraLibs: IExtraLibs = Object.create(null);
-	private _languageService = ts.createLanguageService(this);
+	private _languageService: ts.LanguageService;
 	private _compilerOptions: ts.CompilerOptions;
 	private _inlayHintsOptions?: InlayHintsOptions;
+	private _customTypeScriptPath?: string;
+	private _libFiles?: Record<string, string>;
 
-	constructor(ctx: worker.IWorkerContext, createData: ICreateData) {
+	constructor(private _tsc: TypeScriptAPI, ctx: worker.IWorkerContext, createData: ICreateData) {
 		this._ctx = ctx;
 		this._compilerOptions = createData.compilerOptions;
 		this._extraLibs = createData.extraLibs;
 		this._inlayHintsOptions = createData.inlayHintsOptions;
+		this._customTypeScriptPath = createData.customTypeScriptPath;
+		this._languageService = this._tsc.createLanguageService(this);
 	}
 
 	// --- language service host ---------------
@@ -134,15 +140,17 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 		const suffix = fileName.substr(fileName.lastIndexOf('.') + 1);
 		switch (suffix) {
 			case 'ts':
-				return ts.ScriptKind.TS;
+				return this._tsc.ScriptKind.TS;
 			case 'tsx':
-				return ts.ScriptKind.TSX;
+				return this._tsc.ScriptKind.TSX;
 			case 'js':
-				return ts.ScriptKind.JS;
+				return this._tsc.ScriptKind.JS;
 			case 'jsx':
-				return ts.ScriptKind.JSX;
+				return this._tsc.ScriptKind.JSX;
 			default:
-				return this.getCompilationSettings().allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+				return this.getCompilationSettings().allowJs
+					? this._tsc.ScriptKind.JS
+					: this._tsc.ScriptKind.TS;
 		}
 	}
 
@@ -150,33 +158,9 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 		return '';
 	}
 
+	// TODO(jakebailey): why?
 	getDefaultLibFileName(options: ts.CompilerOptions): string {
-		switch (options.target) {
-			case 99 /* ESNext */:
-				const esnext = 'lib.esnext.full.d.ts';
-				if (esnext in libFileMap || esnext in this._extraLibs) return esnext;
-			case 7 /* ES2020 */:
-			case 6 /* ES2019 */:
-			case 5 /* ES2018 */:
-			case 4 /* ES2017 */:
-			case 3 /* ES2016 */:
-			case 2 /* ES2015 */:
-			default:
-				// Support a dynamic lookup for the ES20XX version based on the target
-				// which is safe unless TC39 changes their numbering system
-				const eslib = `lib.es${2013 + (options.target || 99)}.full.d.ts`;
-				// Note: This also looks in _extraLibs, If you want
-				// to add support for additional target options, you will need to
-				// add the extra dts files to _extraLibs via the API.
-				if (eslib in libFileMap || eslib in this._extraLibs) {
-					return eslib;
-				}
-
-				return 'lib.es6.d.ts'; // We don't use lib.es2015.full.d.ts due to breaking change.
-			case 1:
-			case 0:
-				return 'lib.d.ts';
-		}
+		return this._tsc.getDefaultLibFileName(options);
 	}
 
 	isDefaultLibFileName(fileName: string): boolean {
@@ -191,8 +175,31 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 		return this._getScriptText(path) !== undefined;
 	}
 
+	// Effectively Map<filename, contents>
 	async getLibFiles(): Promise<Record<string, string>> {
-		return libFileMap;
+		if (!this._customTypeScriptPath) {
+			return libFileMap;
+		}
+
+		if (this._libFiles) {
+			return this._libFiles;
+		}
+
+		if (typeof fetch === 'undefined') {
+			throw new Error("Can't get dynamic lib files without fetch");
+		}
+
+		const libFiles: Record<string, string> = {};
+
+		// TODO(jakebailey): make public
+		const libMap: Map<string, string> = (this._tsc as any).libMap;
+		for (const [name, filename] of libMap.entries()) {
+			const url = `${this._customTypeScriptPath}/lib/${filename}`;
+			const response = await fetch(url);
+			libFiles[name] = await response.text();
+		}
+
+		return (this._libFiles = libFiles);
 	}
 
 	// --- language features
@@ -465,13 +472,14 @@ export interface ICreateData {
 	extraLibs: IExtraLibs;
 	customWorkerPath?: string;
 	inlayHintsOptions?: InlayHintsOptions;
+	customTypeScriptPath?: string;
 }
 
 /** The shape of the factory */
 export interface CustomTSWebWorkerFactory {
 	(
 		TSWorkerClass: typeof TypeScriptWorker,
-		tsc: typeof ts,
+		tsc: TypeScriptAPI,
 		libs: Record<string, string>
 	): typeof TypeScriptWorker;
 }
@@ -479,10 +487,12 @@ export interface CustomTSWebWorkerFactory {
 declare global {
 	var importScripts: (path: string) => void | undefined;
 	var customTSWorkerFactory: CustomTSWebWorkerFactory | undefined;
+	var ts: TypeScriptAPI | undefined;
 }
 
 export function create(ctx: worker.IWorkerContext, createData: ICreateData): TypeScriptWorker {
 	let TSWorkerClass = TypeScriptWorker;
+	let tsc = ts;
 	if (createData.customWorkerPath) {
 		if (typeof importScripts === 'undefined') {
 			console.warn(
@@ -498,13 +508,28 @@ export function create(ctx: worker.IWorkerContext, createData: ICreateData): Typ
 				);
 			}
 
-			TSWorkerClass = workerFactoryFunc(TypeScriptWorker, ts, libFileMap);
+			TSWorkerClass = workerFactoryFunc(TypeScriptWorker, tsc, libFileMap);
 		}
 	}
 
-	return new TSWorkerClass(ctx, createData);
-}
+	if (createData.customTypeScriptPath) {
+		if (typeof importScripts === 'undefined') {
+			console.warn(
+				'Monaco is not using webworkers for background tasks, and that is needed to support the customTypeScriptPath flag'
+			);
+		} else {
+			const path = `${createData.customTypeScriptPath}/lib/typescript.js`;
+			self.importScripts(path);
 
-/** Allows for clients to have access to the same version of TypeScript that the worker uses */
-// @ts-ignore
-globalThis.ts = ts.typescript;
+			if (!self.ts) {
+				throw new Error(`The script at ${createData.customTypeScriptPath} does not add ts to self`);
+			}
+			tsc = self.ts;
+		}
+	}
+
+	/** Allows for clients to have access to the same version of TypeScript that the worker uses */
+	// @ts-ignore
+	globalThis.ts = tsc;
+	return new TSWorkerClass(tsc, ctx, createData);
+}

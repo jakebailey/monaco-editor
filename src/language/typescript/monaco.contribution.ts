@@ -72,16 +72,6 @@ export interface DiagnosticRelatedInformation {
 	messageText: string | DiagnosticMessageChain;
 }
 
-interface EmitOutput {
-	outputFiles: OutputFile[];
-	emitSkipped: boolean;
-}
-interface OutputFile {
-	name: string;
-	writeByteOrderMark: boolean;
-	text: string;
-}
-
 export interface ModeConfiguration {
 	/**
 	 * Defines whether the built-in completionItemProvider is enabled.
@@ -377,7 +367,7 @@ export interface TypeScriptWorker {
 	 * Get transpiled output for the given file.
 	 * @returns `typescript.EmitOutput`
 	 */
-	getEmitOutput(fileName: string): Promise<EmitOutput>;
+	getEmitOutput(fileName: string): Promise<ts.EmitOutput>;
 
 	/**
 	 * Get possible code fixes at the given position in the file.

@@ -13,5 +13,7 @@
 	"git.branchProtection": ["main", "release/*"],
 	"git.branchProtectionPrompt": "alwaysCommitToNewBranch",
 	"git.branchRandomName.enable": true,
+	// TODO(jakebailey): remove before PR
+	"editor.formatOnSave": true,
 	"editor.defaultFormatter": "esbenp.prettier-vscode"
 }

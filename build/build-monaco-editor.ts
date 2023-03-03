@@ -36,6 +36,8 @@ generateMetadata();
 	const json = JSON.parse(packageJSON.contents.toString());
 
 	json.private = false;
+	// TODO(jakebailey): remove before PR
+	json.version = '0.999.0-jabaile';
 	delete json.scripts['postinstall'];
 
 	packageJSON.contents = Buffer.from(JSON.stringify(json, null, '  '));

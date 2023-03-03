@@ -577,6 +577,7 @@ class LanguageServiceDefaultsImpl implements LanguageServiceDefaults {
 	}
 }
 
+// TODO(jakebailey): is this needed? This file does not import typescript anymore.
 // export const typescriptVersion: string = tsversion;
 
 const modeConfigurationDefault: Required<ModeConfiguration> = {
@@ -618,6 +619,20 @@ export const getTypeScriptWorker = (): Promise<(...uris: Uri[]) => Promise<TypeS
 export const getJavaScriptWorker = (): Promise<(...uris: Uri[]) => Promise<TypeScriptWorker>> => {
 	return getMode().then((mode) => mode.getJavaScriptWorker());
 };
+
+// export to the global based API
+// (<any>languages).typescript = {
+//     ModuleKind,
+//     JsxEmit,
+//     NewLineKind,
+//     ScriptTarget,
+//     ModuleResolutionKind,
+//     typescriptVersion,
+//     typescriptDefaults,
+//     javascriptDefaults,
+//     getTypeScriptWorker,
+//     getJavaScriptWorker
+// };
 
 // --- Registration to monaco editor ---
 

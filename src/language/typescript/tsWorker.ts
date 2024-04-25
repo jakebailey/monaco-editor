@@ -407,7 +407,11 @@ export class TypeScriptWorker implements ts.LanguageServiceHost, ITypeScriptWork
 			return { outputFiles: [], emitSkipped: true };
 		}
 		// The diagnostics property is internal, returning it without clearing breaks message serialization.
-		const emitOutput = this._languageService.getEmitOutput(fileName) as ts.EmitOutput & {
+		const emitOutput = this._languageService.getEmitOutput(
+			fileName,
+			/*emitOnlyDtsFiles*/ undefined,
+			/*forceDtsEmit*/ true
+		) as ts.EmitOutput & {
 			diagnostics?: ts.Diagnostic[];
 		};
 		const diagnostics = emitOutput.diagnostics
